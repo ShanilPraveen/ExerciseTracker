@@ -46,74 +46,78 @@ app.get('/api/users',async (req,res)=>{
   }
 });
 
-app.post('/api/users/:_id/exercises',async(req,res)=>{
+app.post('/api/users/:_id/exercises', async (req, res) => {
   const id = req.params._id;
-  const {description,duration,date} = req.body;
-  try{
-    const user = await user.findById(id);
-    if(!user) return res.json ({ error: 'User not found' });
+  const { description, duration, date } = req.body;
 
-    if (!duration || isNaN(duration)) {
-      return res.json({ error: 'Invalid duration' });
-    }
+  try {
+    const foundUser = await user.findById(id);
+    if (!foundUser) return res.json({ error: 'User not found' });
 
-    const newexercise = new exercise({
-      userId: user._id,
-      description : description,
-      duration : parseInt(duration),
-      date : date? new Date(date) : new Date()
-  });
-    const savedExercise = await newexercise.save();
+    const newExercise = new exercise({
+      userId: id,
+      description,
+      duration: parseInt(duration),
+      date: date ? new Date(date) : new Date()
+    });
+
+    const savedExercise = await newExercise.save();
 
     res.json({
-      _id : user._id,
-      username : user.username,
-      date : savedExercise.date.toDateString(),
-      duration : savedExercise.duration,
+      _id: foundUser._id,
+      username: foundUser.username,
+      date: savedExercise.date.toDateString(), 
+      duration: savedExercise.duration,
       description: savedExercise.description
     });
-  }
-  catch(err){
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to add exercise' });
   }
-})
+});
+
 
 
 app.get('/api/users/:_id/logs', async (req, res) => {
-  const userId = req.params._id;
+  const { _id } = req.params;
   const { from, to, limit } = req.query;
 
   try {
-    const user = await user.findById(userId);
-    if (!user) return res.json({ error: 'User not found' });
+    const foundUser = await user.findById(_id);
+    if (!foundUser) return res.json({ error: 'User not found' });
 
-    const filter = { userId };
-    
-    if (from) filter.date = { $gte: new Date(from) };
-    if (to) {
-      if (!filter.date) filter.date = {};
-      filter.date.$lte = new Date(to);
+    const filter = { userId: _id };
+
+    if (from || to) {
+      filter.date = {};
+      if (from) filter.date.$gte = new Date(from);
+      if (to) filter.date.$lte = new Date(to);
     }
 
-    let exercises = await exercise.find(filter);
-    if (limit) exercises = exercises.slice(0, parseInt(limit));
+    let logsQuery = exercise.find(filter).select('description duration date');
 
-    const log = exercises.map(ex => ({
+    if (limit) logsQuery = logsQuery.limit(parseInt(limit));
+
+    const logs = await logsQuery.exec();
+
+    const formattedLogs = logs.map(ex => ({
       description: ex.description,
       duration: ex.duration,
-      date: ex.date.toDateString()
+      date: ex.date.toDateString() 
     }));
 
     res.json({
-      _id: user._id,
-      username: user.username,
-      count: log.length,
-      log
+      _id: foundUser._id,
+      username: foundUser.username,
+      count: formattedLogs.length,
+      log: formattedLogs
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to fetch logs' });
   }
 });
+
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
